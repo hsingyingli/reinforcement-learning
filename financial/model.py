@@ -4,23 +4,43 @@ import random
 import numpy as np
 
 
-
-class Actor(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, max_action):
-        super(Actor, self).__init__()
-        self.h1 = nn.Linear(input_size, hidden_size)
-        self.h2 = nn.Linear(hidden_size, output_size)
-        self.tanh = nn.Tanh()
-        self.relu = nn.ReLU()
-        self.max_action = max_action
-    def forward(self, x):
-        x = self.h1(x)
-        x = self.relu(x)
-        x = self.h2(x)
-        x = self.tanh(x)*self.max_action
-        return x
+class ModelFactory():
+    def __init__(self):
+        pass    
 
 
+    @staticmethod
+    def get_model(in_channels, out_channels, kernel_size, padding, output_dimension):
+        fcn = [
+            {'name': 'conv1d', 'adaptation': False, 'meta': True,
+            'config': {'out_channels': out_channels, 'in_channels': in_channels, 'kernel_size': kernel_size[0], 'padding': padding[0]}},
+            {'name': 'padding_reshape'},
+            {'name': 'bn', 'adaptation': False, 'meta': True,
+            'config': {'in_channels': out_channels}},
+            {'name': 'relu'},
+
+            {'name': 'conv1d', 'adaptation': False, 'meta': True,
+            'config': {'out_channels': out_channels*2, 'in_channels': out_channels, 'kernel_size': kernel_size[1], 'padding': padding[1]}},
+            {'name': 'padding_reshape'},
+            {'name': 'bn', 'adaptation': False, 'meta': True,
+            'config': {'in_channels': out_channels*2}},
+            {'name': 'relu'},
+            
+            {'name': 'conv1d', 'adaptation': False, 'meta': True,
+            'config': {'out_channels': out_channels, 'in_channels': out_channels*2, 'kernel_size': kernel_size[2], 'padding': padding[2]}},
+            {'name': 'padding_reshape'},
+            {'name': 'bn', 'adaptation': False, 'meta': True,
+            'config': {'in_channels': out_channels}},
+            {'name': 'relu'},
+            
+            {'name' :'attention', 'adaptation': False, 'meta': True,
+            'config':{'out': out_channels*2, 'in': out_channels }},
+            {'name': 'flatten'},
+            
+            {'name': 'linear', 'adaptation': True, 'meta': True,
+                'config': {'out': output_dimension, 'in': 10}}
+         ]
+        return fcn
 
 
 class Critic(nn.Module):

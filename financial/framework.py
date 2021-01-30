@@ -1,11 +1,11 @@
 import numpy as np 
 import torch
 import torch.nn as nn
-import gym
 
 from tensorboardX import SummaryWriter
-from tqdm import tqdm
-from model import *
+from tqdm  import tqdm
+# from model import *
+
 
 
 class DDPG(object):
@@ -20,26 +20,24 @@ class DDPG(object):
         self.actor_lr       = args.actor_lr
         self.epsilon        = args.epsilon
         self.deepsilon      = args.deepsilon
-        # self.deepsilon      = 1 / self.epsilon 
+
         self.device         = torch.device(args.device)
 
 
         # Components
-        self.env           = gym.make(args.env)
-        self.action_space  = self.env.action_space.shape[0]
-        self.state_space   = self.env.observation_space.shape[0]
-        self.replay_buffer = Memory(args.capacity, self.state_space)
+        self.env           =    None
+        # self.replay_buffer = Memory(args.capacity, self.state_space)
         self.criterion     = nn.MSELoss()
-        self.writer         = SummaryWriter('runs/'+ str(args.exp_id), comment = args.env)
+        # self.writer        = SummaryWriter('runs/'+ str(args.exp_id), comment = args.env)
         #------------------ Actor ------------------
-        self.online_actor  = Actor(self.state_space, args.hidden_size, self.action_space, float(self.env.action_space.high[0])).to(self.device)
-        self.target_actor  = Actor(self.state_space, args.hidden_size, self.action_space, float(self.env.action_space.high[0])).to(self.device)
+        self.online_actor  = Learner(config)
+        self.target_actor  = Learner(config)
         self.actor_optim   = torch.optim.Adam(self.online_actor.parameters(), lr = args.actor_lr)
 
         #------------------ Critic ------------------
         self.online_critic = Critic(self.state_space, self.action_space, args.hidden_size, 1).to(self.device)
         self.target_critic = Critic(self.state_space, self.action_space, args.hidden_size, 1).to(self.device)
-        self.critic_optim   = torch.optim.Adam(self.online_critic.parameters(), lr = args.critic_lr)
+        self.critic_optim  = torch.optim.Adam(self.online_critic.parameters(), lr = args.critic_lr)
 
         #  make target network equal to online network
         self.hard_update(self.target_actor, self.online_actor)
@@ -62,10 +60,10 @@ class DDPG(object):
         for target_param, param in zip(target.parameters(), source.parameters()):
             target_param.data.copy_(param.data)
 
-    def choose_action(self, state):
+    def choose_action(self, state, fast_weight):
         
         state  = torch.FloatTensor(state).to(self.device).reshape(1,-1)
-        action = self.online_actor(state)
+        action = self.online_actor(state, fast_weight)
         action = action.cpu().detach().numpy().squeeze(0)
         action = (action + np.random.normal(0.5, self.epsilon, size=self.action_space)).clip(
                     self.env.action_space.low, self.env.action_space.high)
@@ -89,32 +87,64 @@ class DDPG(object):
         self.critic_optim.step()
         self.writer.add_scalar("Critic loss", loss.cpu().item(), self.update_counter)
                     
-    
-
-    def update_actor(self, state_batch, action_batch, reward_batch, next_state_batch):
+    def update_actor(self, state_batch, action_batch, reward_batch, next_state_batch, fast_weight):
         # --------------  update actor -----------------
-        action = self.online_actor(state_batch)
+        action = self.online_actor(state_batch, fast_weight)
         loss = - self.online_critic(state_batch, action).mean()
 
-        self.actor_optim.zero_grad()
+        # self.actor_optim.zero_grad()
+        # loss.backward()
+        # self.actor_optim.step()
+        # self.writer.add_scalar("Actor loss", loss.cpu().item(), self.update_counter)
+        return loss
+
+    def update_representation(self, loss):
+        self.optimizer.zero_grad()
         loss.backward()
-        self.actor_optim.step()
-        self.writer.add_scalar("Actor loss", loss.cpu().item(), self.update_counter)
+        self.optimizer.step()
+    
+
+    def inner_update(self, loss):
+        adaptation_weight_counter = 0
+
+        grad = torch.autograd.grad(loss, self.online_actor.get_adaptation_parameters(fast_weights),
+                                   create_graph=True)
+        new_weights = []
+
+        # --------------  only update prediction layer ------------------
+
+        for p in fast_weights:
+            if p.adaptation:
+                g = grad[adaptation_weight_counter]
+                temp_weight = p - self.update_lr * g
+                temp_weight.adaptation = p.adaptation
+                temp_weight.meta = p.meta
+                new_weights.append(temp_weight)
+                adaptation_weight_counter += 1
+            else:
+                new_weights.append(p)
+
+        return new_weights
 
     def solve(self):
-        
+        total_loss = []
+        fast_weight = self.online_actor.parameters()
+
         for episode in range(self.max_episode):
             state    = self.env.reset()
-            episode_reward = 0.        
+            episode_reward = 0.   
+            finish = False     
             # every steps:
-            for step in range(self.max_step):
+            while not finish:
                 #1. get_action + noise
-                action = self.choose_action(state)
-            
+                action = self.choose_action(state, fast_weight)    
 
                 #2. do the action return next state, reward, is_done
-                next_state, reward, done, info = self.env.step(action)
-                self.env.render()
+                next_state, reward, is_done, info = self.env.step(action)
+
+                if is_done:
+                    finish = True
+                    continue
 
                 #3. store transition (state, action, reward, next_state)
                 self.replay_buffer.store_transition(state, action, reward, next_state)
@@ -134,8 +164,11 @@ class DDPG(object):
                     self.update_critic(state_batch, action_batch, reward_batch, next_state_batch)
                     
                     #4.3 update online actor using policy gradient
-                    self.update_actor(state_batch, action_batch, reward_batch, next_state_batch)
-                    
+                    loss = self.update_actor(state_batch, action_batch, reward_batch, next_state_batch, fast_weight)
+                    total_loss.append(loss)
+
+                    fast_weights = self.inner_update(loss)
+
                     #4.4 update target critic / actor
                     self.soft_update()
                     self.epsilon *= self.deepsilon
@@ -144,10 +177,11 @@ class DDPG(object):
                 #5. state = next_state, totoal reward += reward
                 state = next_state
                 episode_reward += reward
-                ## log
              
             print("||Episode: %3d || Episode reward: %.6f"%(episode, episode_reward))
-            self.writer.add_scalar("Episode reward", episode_reward, episode)
-        self.writer.close()
+            
+        
+        return total_loss
+       
 
 
