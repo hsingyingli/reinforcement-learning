@@ -99,7 +99,7 @@ class Learner(nn.Module):
             elif name == 'bn':
                 w, b = vars[idx], vars[idx+1]
                 m, v = self.vars_bn[bn_idx], self.vars_bn[bn_idx+1]
-                out = F.batch_norm(out, m, v, weight=w, bias=b, training=bn_training)
+                x = F.batch_norm(x, m, v, weight=w, bias=b, training=bn_training)
                 idx += 2
                 bn_idx += 2
 

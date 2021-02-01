@@ -4,35 +4,36 @@ import torch.nn as nn
 
 from tensorboardX import SummaryWriter
 from tqdm  import tqdm
-# from model import *
-
+from learner import *
+from model import *
 
 
 class DDPG(object):
-    def __init__(self, args):
+    def __init__(self, args, config):
         #----------------- hyper parameters -----------------
         self.batch_size     = args.batch_size
         self.tau            = args.tau
         self.gamma          = args.gamma
         self.max_episode    = args.max_episode
-        self.max_step       = args.max_step
         self.critic_lr      = args.critic_lr
         self.actor_lr       = args.actor_lr
+        self.meta_lr        = args.meta_lr
         self.epsilon        = args.epsilon
         self.deepsilon      = args.deepsilon
-
+        self.state_space    = args.feature_size
+        self.action_space   = 1
         self.device         = torch.device(args.device)
 
 
         # Components
         self.env           =    None
-        # self.replay_buffer = Memory(args.capacity, self.state_space)
+        self.replay_buffer = Memory(args.capacity, self.state_space)
         self.criterion     = nn.MSELoss()
         # self.writer        = SummaryWriter('runs/'+ str(args.exp_id), comment = args.env)
         #------------------ Actor ------------------
         self.online_actor  = Learner(config)
         self.target_actor  = Learner(config)
-        self.actor_optim   = torch.optim.Adam(self.online_actor.parameters(), lr = args.actor_lr)
+        self.actor_optim   = torch.optim.Adam(self.online_actor.parameters(), lr = args.meta_lr)
 
         #------------------ Critic ------------------
         self.online_critic = Critic(self.state_space, self.action_space, args.hidden_size, 1).to(self.device)
@@ -62,7 +63,7 @@ class DDPG(object):
 
     def choose_action(self, state, fast_weight):
         
-        state  = torch.FloatTensor(state).to(self.device).reshape(1,-1)
+        state  = torch.FloatTensor(state).to(self.device)
         action = self.online_actor(state, fast_weight)
         action = action.cpu().detach().numpy().squeeze(0)
         action = (action + np.random.normal(0.5, self.epsilon, size=self.action_space)).clip(
@@ -104,7 +105,7 @@ class DDPG(object):
         self.optimizer.step()
     
 
-    def inner_update(self, loss):
+    def inner_update(self, loss, fast_weight):
         adaptation_weight_counter = 0
 
         grad = torch.autograd.grad(loss, self.online_actor.get_adaptation_parameters(fast_weights),
@@ -116,7 +117,7 @@ class DDPG(object):
         for p in fast_weights:
             if p.adaptation:
                 g = grad[adaptation_weight_counter]
-                temp_weight = p - self.update_lr * g
+                temp_weight = p - self.actor_lr * g
                 temp_weight.adaptation = p.adaptation
                 temp_weight.meta = p.meta
                 new_weights.append(temp_weight)
@@ -167,7 +168,7 @@ class DDPG(object):
                     loss = self.update_actor(state_batch, action_batch, reward_batch, next_state_batch, fast_weight)
                     total_loss.append(loss)
 
-                    fast_weights = self.inner_update(loss)
+                    fast_weights = self.inner_update(loss, fast_weight)
 
                     #4.4 update target critic / actor
                     self.soft_update()

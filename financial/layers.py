@@ -30,7 +30,7 @@ def attention(param, adaptation, meta):
 def bn(param, adaptation, meta):
     w = nn.Parameter(torch.ones(param['in_channels']))
     
-    b = nn.Parameter(torch.ones(param['in_channels']))
+    b = nn.Parameter(torch.zeros(param['in_channels']))
     m = nn.Parameter(torch.zeros(param['in_channels']), requires_grad=False)
-    v = nn.Parameter(torch.zeros(param['in_channels']), requires_grad=False)
+    v = nn.Parameter(torch.ones(param['in_channels']), requires_grad=False)
     return w, b, m, v

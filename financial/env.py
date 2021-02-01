@@ -11,7 +11,7 @@ class environment(object):
         self.get_data(stock, date)
     
     def get_data(self, stock, date):
-        df = pd.read_csv('./data/' + stock + '.csv')
+        df = pd.read_csv('./financial/data/' + stock)
         df.index = pd.to_datetime(df.Ntime.values, format = '%Y%m%d')
         df.Ntime = df.index
 
@@ -45,7 +45,7 @@ class environment(object):
         return next_state, reward, is_done
 
     def get_reward(self, action):
-        return
+        return 1
 
     def finish(self):
         if self.mode is 'train':
@@ -61,9 +61,9 @@ class environment(object):
 
     def get_observation(self):
         if self.mode is 'train':
-            return self.train_data[self.day:self.day + self.time_step, :]
+            return self.train_data[self.day:self.day + self.time_step, :].T.reshape(1,-1,self.time_step )
         elif self.mode is 'test':
-            return self.test_data[self.day:self.day + self.time_step, :]
+            return self.test_data[self.day:self.day + self.time_step, :].T.reshape(1,-1,self.time_step )
 
     def get_next_timestep(self, date, year = 0, month = 0, day = 0):
         '''

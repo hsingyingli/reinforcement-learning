@@ -13,21 +13,21 @@ class ModelFactory():
     def get_model(in_channels, out_channels, kernel_size, padding, output_dimension):
         fcn = [
             {'name': 'conv1d', 'adaptation': False, 'meta': True,
-            'config': {'out_channels': out_channels, 'in_channels': in_channels, 'kernel_size': kernel_size[0], 'padding': padding[0]}},
+            'config': {'out_channels': out_channels, 'in_channels': in_channels, 'kernel_size': kernel_size[0], 'padding': padding[0], 'stride': 1}},
             {'name': 'padding_reshape'},
             {'name': 'bn', 'adaptation': False, 'meta': True,
             'config': {'in_channels': out_channels}},
             {'name': 'relu'},
 
             {'name': 'conv1d', 'adaptation': False, 'meta': True,
-            'config': {'out_channels': out_channels*2, 'in_channels': out_channels, 'kernel_size': kernel_size[1], 'padding': padding[1]}},
+            'config': {'out_channels': out_channels*2, 'in_channels': out_channels, 'kernel_size': kernel_size[1], 'padding': padding[1], 'stride': 1}},
             {'name': 'padding_reshape'},
             {'name': 'bn', 'adaptation': False, 'meta': True,
             'config': {'in_channels': out_channels*2}},
             {'name': 'relu'},
             
             {'name': 'conv1d', 'adaptation': False, 'meta': True,
-            'config': {'out_channels': out_channels, 'in_channels': out_channels*2, 'kernel_size': kernel_size[2], 'padding': padding[2]}},
+            'config': {'out_channels': out_channels, 'in_channels': out_channels*2, 'kernel_size': kernel_size[2], 'padding': padding[2], 'stride': 1}},
             {'name': 'padding_reshape'},
             {'name': 'bn', 'adaptation': False, 'meta': True,
             'config': {'in_channels': out_channels}},
